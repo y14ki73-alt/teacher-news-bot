@@ -1,0 +1,80 @@
+import feedparser
+from newspaper import Article
+import requests
+import os
+from openai import OpenAI
+
+# 環境変数から取得（Render用）
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK"]
+
+KEYWORDS = ["特別支援学校", "特別支援教育", "知的障害"]
+
+RSS_FEEDS = [
+    "https://www3.nhk.or.jp/rss/news/cat0.xml",
+    "https://news.yahoo.co.jp/rss/topics/top-picks.xml"
+]
+
+def summarize_for_future_admin(text):
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    prompt = f"""
+あなたは、日本の学校教員で「将来管理職を目指す担任」向けのニュース要約AIです。
+以下の記事を要約してください。
+
+条件：
+・220〜260文字以内
+・事実ベース
+・担任業務への影響を含める
+・管理職を目指す立場での視点を含める
+
+出力形式：
+【要点（制度・動向）】
+・
+・
+
+【担任としての影響】
+・
+
+【管理職を目指す立場での視点】
+・
+
+記事本文：
+{text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return response.choices[0].message.content
+
+
+def post_to_slack(message):
+    requests.post(SLACK_WEBHOOK, json={"text": message})
+
+
+def main():
+    for feed_url in RSS_FEEDS:
+        feed = feedparser.parse(feed_url)
+        for entry in feed.entries:
+            title = entry.title
+            link = entry.link
+
+            if not any(k in title for k in KEYWORDS):
+                continue
+
+            article = Article(link, language="ja")
+            article.download()
+            article.parse()
+
+            if not any(k in article.text for k in KEYWORDS):
+                continue
+
+            summary = summarize_for_future_admin(article.text)
+            post_to_slack(f"🏫 *{title}*\n{summary}\n<{link}>")
+
+
+if __name__ == "__main__":
+    main()
