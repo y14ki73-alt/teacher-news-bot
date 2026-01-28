@@ -1,5 +1,2 @@
-feedparser
 newspaper3k
-requests
-openai
-lxml
+lxml[html_clean]
